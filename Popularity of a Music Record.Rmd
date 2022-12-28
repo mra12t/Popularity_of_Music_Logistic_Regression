@@ -1,0 +1,104 @@
+---
+title: "Popularity of a Music Record"
+output: github_document
+date: "2022-12-17"
+---
+### About the Study and the Data Set 
+The music industry is a globally successful market with an annual revenue of around $15 billion. It is highly competitive, with three major production companies accounting for the majority of annual album sales. Record labels support artists by providing them with resources to sell their music on a large scale, but success for an artist's release is uncertain. In this assignment, we will use analytics to predict whether a song will reach the Top 10 of the Billboard Hot 100 Chart by using information about the song's properties. We will use a dataset of songs that made it to the Top 10 from 1990-2010, as well as a sample of songs that did not make the Top 10. The dataset includes variables that describe the artist and song, as well as attributes such as time signature, loudness, key, pitch, tempo, and timbre. Our goal is to use this information to predict the popularity of a song and maximize the financial success of record labels.
+
+### EDA
+
+```{r}
+songs = read.csv("songs.csv")
+str(songs)
+nrow(songs)
+```
+```{r}
+#the years distribution
+hist(songs$year)
+```
+```{r}
+# Let's see the Top 10 artist in the Data Set
+head(sort(table(songs$artistname), decreasing = TRUE))
+# Let's see how many unique artists we have
+length(table(songs$artistname))
+
+```
+Let's see which song has the highest tempo in the data set.   
+```{r}
+songs$songtitle[which.max(songs$tempo)]
+```
+### Building the Model 
+
+We will start by splitting the data set into training and testing data set. 
+
+```{r}
+SongTrain = subset(songs, year <=2009)
+SongTest = subset(songs, year > 2009)
+nrow(SongTrain)
+```
+Now we will create a vector containing the names of the variables that we will exclude from the model and after deleting them from the training and testing sets we will train our logistic model. 
+
+```{r}
+deleted = c("year", "artistID", "artistname", "songID", "songtitle")
+SongTrain = SongTrain[, !(names(SongTrain) %in% deleted)]
+SongTest = SongTest[, !(names(SongTest) %in% deleted)]
+
+Model1 = glm(Top10 ~ ., family = binomial, data = SongTrain)
+summary(Model1)
+
+```
+The model has an AIC of 4827.2 and it suggest that all timesignature_confidence, tempo_confidence, and key_confidence are significant to the model with positive coefficients. This lead us to believe that lower confidence which generally means higher complexity of the song will decrease the chance of the song being in the TOP10.
+
+* **Upon further inspection of the model, we can see that loudness has positive coefficient which suggests that listener tend to prefer heavy instrumental songs more. However, if we inspect the energy coefficient it suggests that listeners prefer less energetic songs which is a contradiction with the former argument. For that, we will need to check the co-linearity of the two variables!** 
+
+```{r}
+cor(SongTrain$energy, SongTrain$loudness)
+```
+The assumption we made is correct and the two variables are highly correlated which is why we will build the model again, omitting one of them.
+
+```{r}
+Model_withE = glm(Top10 ~ . -loudness, family = binomial, data = SongTrain)
+summary(Model_withE)
+```
+We can see that the energy coefficient has indeed became positive, suggesting that more energetic songs tend to make it more to the Top10. However, the energy variable became insignificant in the model.  
+
+So let's see if we did it the other way around, what will happen. 
+
+```{r}
+Model_withL = glm(Top10 ~ . -energy, family = binomial, data = SongTrain)
+summary(Model_withL)
+```
+This model have both positive coefficient of Loudness and it remained significant!
+
+### Testing the Model
+
+```{r}
+library(knitr)
+predTest = predict(Model_withL, newdata = SongTest, type = "response")
+kable(table(SongTest$Top10, predTest >= 0.45))
+
+```
+
+```{r}
+#Baseline Model
+kable(table(SongTest$Top10))
+```
+
+
+
+```{r}
+#Accuracy of the Model
+sum(diag(table(SongTest$Top10, predTest >= 0.45)))/sum(table(SongTest$Top10, predTest >= 0.45))
+
+#Accuracy of the Baseline
+(table(SongTest$Top10)[1]/ sum(table(SongTest$Top10)))
+
+```
+Observing the results of the model we can see that the model is really conservative when it comes to predicting hits. This suggests that it can still be used to provide an insight to the problem. For instance, while the model correctly predicted that  19 songs will make it to the top10, it missed 40 songs that made it. But, it only flagged 5 songs as Top10 while they actually aren't. which means that the model favors ***Specificity over Sensitivity***. 
+
+
+
+
+
+
